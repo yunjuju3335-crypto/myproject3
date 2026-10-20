@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>업무분석 자동화 웹뷰어 (팀원 공유용 · 데이터 미저장 보안 모드)</title>
+  <meta name="description" content="엑셀 파일을 서버나 DB에 저장하지 않고 브라우저 메모리에서만 안전하게 즉시 분석하는 팀원 공유용 업무분석 웹사이트입니다.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="업무분석 자동화 웹뷰어 (팀원 공유용)">
+  <meta property="og:description" content="업로드한 엑셀 데이터가 DB에 저장되지 않는 보안 모드로 발주 추이, 발주증가 TOP 10, 농장 완료건, 접수·오류·실적을 즉시 분석합니다.">
+  <!-- Modern Local Vendor with CDN Fallback -->
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script>if (typeof XLSX === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"><\\/script>');</script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <script>if (typeof Chart === 'undefined') document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"><\\/script>');</script>
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-badge">DATA-AUTO</div>
+      <h1 class="app-title">업무분석 자동화 웹뷰어</h1>
+      <span class="app-subtitle" style="color: #10b981; font-weight: 700;">🔒 팀원 공유용 (DB 미저장 보안 모드)</span>
+    </div>
+
+    <div class="header-actions" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <button class="btn btn-primary" id="btn-copy-share-url" style="font-size: 12px; width: auto; padding: 8px 14px;">
+        🔗 웹사이트 주소 복사
+      </button>
+      <button class="btn btn-secondary" id="btn-clear-session" style="font-size: 12px; width: auto; padding: 8px 14px;">
+        🧹 화면 초기화
+      </button>
+      <button class="btn btn-secondary" id="btn-load-samples" style="font-size: 12px; width: auto; padding: 8px 14px;">
+        ⚡ 샘플 데이터 원클릭 로드
+      </button>
+      <button class="btn btn-secondary" id="theme-toggle" style="font-size: 12px; width: auto; padding: 8px 14px;">
+        ☀️ 라이트 모드
+      </button>
+    </div>
+  </header>
+
+  <!-- 3-Column Landing Dashboard -->
+  <main class="main-dashboard">
+
+    <!-- [Column 1] 원본 데이터 보관 칼럼 -->
+    <section class="dashboard-column col-1">
+      <div class="column-header">
+        <div class="column-title-group">
+          <div class="column-icon">📂</div>
+          <h2 class="column-title">1. 원본 데이터 보관</h2>
+        </div>
+        <span style="font-size: 11px; color: var(--text-muted);">무결성 감사</span>
+      </div>
+
+      <div class="column-body">
+        <!-- 발주 원본 데이터 슬롯 -->
+        <div class="vault-slot">
+          <div class="slot-header">
+            <span class="slot-name">📦 전월(지난달) 발주 엑셀</span>
+            <span class="slot-badge badge-empty" id="badge-prev-orders">대기중</span>
+          </div>
+          <div class="file-dropzone" id="dropzone-prev-orders">
+            <input type="file" id="input-prev-orders" accept=".xlsx, .xls">
+            <div class="dropzone-label" id="label-prev-orders">📂 클릭하여 파일 불러오기 또는 드롭 (.xlsx)</div>
+          </div>
+        </div>
+
+        <div class="vault-slot">
+          <div class="slot-header">
+            <span class="slot-name">📦 당월(현재달) 발주 엑셀</span>
+            <span class="slot-badge badge-empty" id="badge-curr-orders">대기중</span>
+          </div>
+          <div class="file-dropzone" id="dropzone-curr-orders">
+            <input type="file" id="input-curr-orders" accept=".xlsx, .xls">
+            <div class="dropzone-label" id="label-curr-orders">📂 클릭하여 파일 불러오기 또는 드롭 (.xlsx)</div>
+          </div>
+        </div>
+
+        <!-- 1. 발주 분석 버튼 -->
+        <button class="btn btn-primary" id="btn-save-orders">
+          📊 1. 발주 원본데이터 분석 실행
+        </button>
+
+        <div style="border-top: 1px solid var(--border-color); margin: 6px 0;"></div>
+
+        <!-- 상품 진행 원본 데이터 슬롯 -->
+        <div class="vault-slot">
+          <div class="slot-header">
+            <span class="slot-name">🚚 상품 진행 엑셀</span>
+            <span class="slot-badge badge-empty" id="badge-products">대기중</span>
+          </div>
+          <div class="file-dropzone" id="dropzone-products">
+            <input type="file" id="input-products" accept=".xlsx, .xls">
+            <div class="dropzone-label" id="label-products">📂 클릭하여 파일 불러오기 또는 드롭 (.xlsx)</div>
+          </div>
+        </div>
+
+        <!-- 2. 상품 진행 확인 버튼 -->
+        <button class="btn btn-secondary" id="btn-save-products">
+          📊 2. 상품 진행 원본데이터 확인
+        </button>
+
+        <div style="border-top: 1px solid var(--border-color); margin: 6px 0;"></div>
+
+        <!-- 3. 접수 원본 데이터 슬롯 -->
+        <div class="vault-slot">
+          <div class="slot-header">
+            <span class="slot-name">📋 3. 접수 엑셀</span>
+            <span class="slot-badge badge-empty" id="badge-receptions">대기중</span>
+          </div>
+          <div class="file-dropzone" id="dropzone-receptions">
+            <input type="file" id="input-receptions" accept=".xlsx, .xls">
+            <div class="dropzone-label" id="label-receptions">📂 클릭하여 파일 불러오기 또는 드롭 (.xlsx)</div>
+          </div>
+        </div>
+
+        <!-- 3. 접수 확인 버튼 -->
+        <button class="btn btn-secondary" id="btn-save-receptions">
+          📊 3. 접수 원본데이터 확인
+        </button>
+
+        <div style="border-top: 1px solid var(--border-color); margin: 6px 0;"></div>
+
+        <!-- 4. 오류 원본 데이터 슬롯 -->
+        <div class="vault-slot">
+          <div class="slot-header">
+            <span class="slot-name">⚠️ 4. 오류 엑셀</span>
+            <span class="slot-badge badge-empty" id="badge-errors">대기중</span>
+          </div>
+          <div class="file-dropzone" id="dropzone-errors">
+            <input type="file" id="input-errors" accept=".xlsx, .xls">
+            <div class="dropzone-label" id="label-errors">📂 클릭하여 파일 불러오기 또는 드롭 (.xlsx)</div>
+          </div>
+        </div>
+
+        <!-- 4. 오류 확인 버튼 -->
+        <button class="btn btn-secondary" id="btn-save-errors">
+          📊 4. 오류 원본데이터 확인
+        </button>
+
+        <div style="border-top: 1px solid var(--border-color); margin: 6px 0;"></div>
+
+        <!-- 5. 실적 원본 데이터 슬롯 -->
+        <div class="vault-slot">
+          <div class="slot-header">
+            <span class="slot-name">🎯 5. 실적 엑셀</span>
+            <span class="slot-badge badge-empty" id="badge-performances">대기중</span>
+          </div>
+          <div class="file-dropzone" id="dropzone-performances">
+            <input type="file" id="input-performances" accept=".xlsx, .xls">
+            <div class="dropzone-label" id="label-performances">📂 클릭하여 파일 불러오기 또는 드롭 (.xlsx)</div>
+          </div>
+        </div>
+
+        <!-- 5. 실적 확인 버튼 -->
+        <button class="btn btn-secondary" id="btn-save-performances">
+          📊 5. 실적 원본데이터 확인
+        </button>
+
+        <!-- 무결성 안내 문구 -->
+        <div class="integrity-box" style="margin-top: auto;">
+          <span>🛡️ 엑셀 업로드 시 서버(Supabase) 및 로컬 DB에 저장되지 않으며 현재 화면에서만 안전하게 분석됩니다</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- [Column 2] 분석 칼럼 (모듈식 실행 버튼) -->
+    <section class="dashboard-column col-2">
+      <div class="column-header">
+        <div class="column-title-group">
+          <div class="column-icon">⚡</div>
+          <h2 class="column-title">2. 분석 실행 모듈</h2>
+        </div>
+        <span style="font-size: 11px; color: var(--text-muted);">플러그인 구조</span>
+      </div>
+
+      <div class="column-body" id="analysis-action-list">
+        <!-- 자바스크립트 모듈 레지스트리에서 동적으로 생성됩니다 -->
+      </div>
+    </section>
+
+    <!-- [Column 3] 결과 칼럼 (표 & 그래프) -->
+    <section class="dashboard-column col-3">
+      <div class="column-header" style="flex-wrap: wrap; gap: 8px;">
+        <div class="column-title-group">
+          <div class="column-icon">📊</div>
+          <h2 class="column-title" id="column-3-main-title">3. 데이터 표 & 분석 결과</h2>
+        </div>
+        <div class="view-tabs" id="view-tabs" style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <button class="btn btn-secondary tab-btn active" data-view="analysis" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            📊 분석 결과 종합표
+          </button>
+          <button class="btn btn-secondary tab-btn" data-slot="receptions" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            📋 3.접수 원본표
+          </button>
+          <button class="btn btn-secondary tab-btn" data-slot="errors" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            ⚠️ 4.오류 원본표
+          </button>
+          <button class="btn btn-secondary tab-btn" data-slot="performances" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            🎯 5.실적 원본표
+          </button>
+          <button class="btn btn-secondary tab-btn" data-slot="currOrders" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            📦 당월발주 원본표
+          </button>
+          <button class="btn btn-secondary tab-btn" data-slot="prevOrders" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            📦 전월발주 원본표
+          </button>
+          <button class="btn btn-secondary tab-btn" data-slot="products" style="font-size: 11px; padding: 4px 10px; width: auto;">
+            🚚 상품 원본표
+          </button>
+        </div>
+      </div>
+
+      <div class="column-body" id="result-column-body">
+        <div class="col-3-empty">
+          <div style="font-size: 36px;">📈</div>
+          <div style="font-size: 15px; font-weight: 700;">불러온 데이터 및 분석 결과가 여기에 표시됩니다</div>
+          <div style="font-size: 12px; max-width: 320px; line-height: 1.5;">
+            [칼럼 1]에서 엑셀 파일을 불러오면 DB(Supabase 등)에 저장되지 않고 즉시 원본 표가 표시되며, [칼럼 2]의 분석 버튼으로 실시간 집계 결과를 확인할 수 있습니다.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Core Scripts -->
+  <script src="js/indexedDbStorage.js"></script>
+  <script src="js/defaultData.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/auditor.js"></script>
+  <script src="js/modules/orderTrend.js"></script>
+  <script src="js/modules/floristRanking.js"></script>
+  <script src="js/modules/productProgress.js"></script>
+  <script src="js/modules/receptionCount.js"></script>
+  <script src="js/modules/errorAnalysis.js"></script>
+  <script src="js/modules/staffSummary.js"></script>
+  <script src="js/modules/registry.js"></script>
+  <script src="js/ui/tableRenderer.js"></script>
+  <script src="js/ui/chartRenderer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
