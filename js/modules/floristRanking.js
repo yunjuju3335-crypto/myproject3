@@ -7,28 +7,36 @@
 const FloristRankingModule = {
   id: 'topFlorists',
   name: '1-2. 발주증가 화원사 1위~10위 추출 (화원사의 체인발주 수량)',
-  description: '화원사의 체인발주 수량 기준 전월 대비 발주증가 수량(당월-전월)이 가장 큰 상위 1위~10위 화원사를 표와 그래프로 시각화합니다. ((보류), (정지), (해지) 제외)',
+  description: '화원사의 체인발주 수량 기준 이전 대비 발주증가 수량(현재-이전)이 가장 큰 상위 1위~10위 화원사를 표와 그래프로 시각화합니다. ((해지), (보류), (정지), (탈퇴), (폐업), (to없음) 제외)',
   icon: '🏆',
 
-  isExcluded(name) {
-    if (!name) return true;
-    const str = String(name).trim();
-    if (!str || str.toLowerCase() === 'nan') return true;
-    const cleanNoSpace = str.replace(/\s+/g, '').toLowerCase();
-    if (['합계', '총계', '소계', '평균', 'total', 'subtotal'].includes(cleanNoSpace)) return true;
+  isExcluded(name, alias = '') {
+    const combined = (String(name || '') + ' ' + String(alias || '')).trim();
+    if (!combined || combined.toLowerCase() === 'nan') return true;
 
-    const regex = /[\(\[\<]\s*[^)\]>]*?(to\s*없음|보류중|보류|연락두절|정지\.발주사|정지중|정지전불|정지|탈퇴폐업|탈퇴|폐업|테스트|해지)/i;
-    if (regex.test(str)) return true;
-    if (/(테스트|폐업\/|정지\/|해지\/|보류\/|^to\s*없음)/i.test(str)) return true;
+    // 공백 제거 및 소문자 정규화
+    const cleanNoSpace = combined.replace(/\s+/g, '').toLowerCase();
 
-    const explicit = [
-      "(to없음)", "(to 없음)", "(보류중)", "(보류)",
-      "(연락두절)", "(정지)", "(정지.발주사)", "(정지중)",
-      "(정지전불", "(정지전불)", "(탈퇴)", "(폐업)",
-      "(탈퇴폐업)", "(테스트)", "(해지", "(해지)"
+    // 1. 합계, 총계 등 요약행 필터링
+    if (['합계', '총계', '소계', '평균', 'total', 'subtotal'].some(t => cleanNoSpace.includes(t))) {
+      return true;
+    }
+
+    // 2. 사용자가 지정한 제외 키워드: 보류, 정지, 해지, TO없음, to없음, 탈퇴, 폐업, 폐업해지 등
+    // 괄호 유무, 위치, 대소문자 무관하게 화원사명 또는 화원별칭에 단어가 들어있으면 전수 제외!
+    const excludeKeywords = [
+      '보류',
+      '정지',
+      '해지',
+      'to없음',
+      '탈퇴',
+      '폐업',
+      '폐업해지',
+      '연락두절',
+      '테스트'
     ];
-    const lower = str.toLowerCase();
-    return explicit.some(t => lower.includes(t.toLowerCase()));
+
+    return excludeKeywords.some(kw => cleanNoSpace.includes(kw));
   },
 
   isPureNumber(val) {
@@ -78,6 +86,33 @@ const FloristRankingModule = {
     return rows;
   },
 
+  findNoColumn(rows, keys) {
+    if (!keys || keys.length === 0) return null;
+
+    // 1. 정확한 NO / 번호 컬럼 우선 탐색 (숫자 데이터 확인)
+    const exactTargets = ['no.', 'no', '화원사no', '농장no', '번호', '화원사번호', '화원번호', '코드', '화원사코드'];
+    for (const target of exactTargets) {
+      const found = keys.find(k => {
+        const clean = k.replace(/\s+/g, '').toLowerCase();
+        return clean === target && this.isColumnNumeric(rows, k);
+      });
+      if (found) return found;
+    }
+
+    // 2. 부분 일치 탐색 (단, 반드시 숫자 데이터가 들어있는 컬럼이어야 함!)
+    const partialTargets = ['no', '번호', '코드', '구분'];
+    for (const target of partialTargets) {
+      const found = keys.find(k => {
+        const clean = k.replace(/\s+/g, '').toLowerCase();
+        if (['주문', '전화', '연락', '일련', '송장', '배송', '금액', '수량', '비율'].some(ex => clean.includes(ex))) return false;
+        return clean.includes(target) && this.isColumnNumeric(rows, k);
+      });
+      if (found) return found;
+    }
+
+    return null;
+  },
+
   findNameColumn(rows, keys) {
     const excludedTokens = ['번호', '코드', 'id', 'no.', '구분', '일련', '배송비', '배송료', '옵션', '수량', '건수', '금액', '가격', '단가', '수수료', '발주율', '진행률', '달성률', '비율', '받는분', '연락처', '전화', '일시', '일자', '요청일', '수정일', '지역', '시군구', '주소', '별칭'];
     const isExcludedKey = (k) => {
@@ -85,7 +120,7 @@ const FloristRankingModule = {
       return excludedTokens.some(ex => clean.includes(ex));
     };
 
-    // [핵심] 원본 데이터 '농장' 컬럼을 최우선으로 탐색!
+    // [핵심] 원본 데이터 '농장' 및 '화원사명' 컬럼 최우선 탐색
     const exactTargets = ['농장', '농장명', '출하농장', '화원사명', '화원명', '담당화원사', '수주화원사명', '수주화원사', '발주화원사', '화원사', '상호명', '상호', '업체명'];
     for (const target of exactTargets) {
       const found = keys.find(k => k.replace(/\s+/g, '') === target && !isExcludedKey(k) && !this.isColumnNumeric(rows, k));
@@ -99,6 +134,16 @@ const FloristRankingModule = {
     }
 
     return keys.find(k => !isExcludedKey(k) && !this.isColumnNumeric(rows, k)) || keys[0];
+  },
+
+  findAliasColumn(keys) {
+    if (!keys || keys.length === 0) return null;
+    const targets = ['화원별칭', '별칭', '상호명', '상호', '비고'];
+    for (const t of targets) {
+      const found = keys.find(k => k.replace(/\s+/g, '').toLowerCase().includes(t));
+      if (found) return found;
+    }
+    return null;
   },
 
   findQtyColumn(keys) {
@@ -124,44 +169,64 @@ const FloristRankingModule = {
     return Number.isFinite(num) && num > 0 ? Math.round(num) : 0;
   },
 
-  buildNumberToNameMap(extraRowSets = []) {
-    const map = {};
-    const store = typeof window !== 'undefined' ? window.appStore : null;
-    const allSets = [...extraRowSets];
-    if (store && store.state && store.state.vault) {
-      ['prevOrders', 'currOrders', 'products', 'receptions'].forEach(slot => {
-        if (store.state.vault[slot]?.rows) allSets.push(store.state.vault[slot].rows);
-      });
-    }
-
-    allSets.forEach(rawSet => {
-      const rows = this.normalizeRows(rawSet);
-      if (!rows || rows.length === 0) return;
-      const keys = Object.keys(rows[0]);
-      const nameCol = this.findNameColumn(rows, keys);
-      const numCols = keys.filter(k => ['농장번호', '화원사번호', '번호', '구분', 'no.', '코드'].some(t => k.replace(/\s+/g, '').toLowerCase().includes(t)));
-
-      rows.forEach(r => {
-        const nameVal = (nameCol && r[nameCol] && !this.isPureNumber(r[nameCol]))
-          ? String(r[nameCol]).trim()
-          : '';
-        if (!nameVal || nameVal.toLowerCase() === 'nan') return;
-        numCols.forEach(nc => {
-          const nv = String(r[nc] ?? '').trim();
-          if (nv && this.isPureNumber(nv)) {
-            map[nv] = nameVal;
-          }
-        });
-      });
-    });
-
-    return map;
-  },
-
   // 원본 데이터의 화원사명/농장 이름과 100% 동일하게 유지 (기호 임의 제거 안 함)
   normalizeFloristName(name) {
     if (!name) return '';
     return String(name).trim();
+  },
+
+  extractFloristEntries(rows) {
+    if (!rows || rows.length === 0) return [];
+    const keys = Object.keys(rows[0]);
+    const noKey = this.findNoColumn(rows, keys);
+    const nameKey = this.findNameColumn(rows, keys);
+    const aliasKey = this.findAliasColumn(keys);
+    const qtyKey = this.findQtyColumn(keys);
+
+    return rows.map((r, idx) => {
+      // 1. 고유 식별 번호 (NO.)
+      let noVal = '';
+      if (noKey && r[noKey] !== undefined && r[noKey] !== null) {
+        const rawNo = String(r[noKey]).trim();
+        if (rawNo && rawNo.toLowerCase() !== 'nan') {
+          noVal = rawNo;
+        }
+      }
+
+      // 2. 화원사명 및 화원별칭
+      let nameVal = '';
+      if (nameKey && r[nameKey] !== undefined && r[nameKey] !== null) {
+        const rawName = String(r[nameKey]).trim();
+        if (rawName && rawName.toLowerCase() !== 'nan') {
+          nameVal = this.normalizeFloristName(rawName);
+        }
+      }
+
+      let aliasVal = '';
+      if (aliasKey && r[aliasKey] !== undefined && r[aliasKey] !== null) {
+        const rawAlias = String(r[aliasKey]).trim();
+        if (rawAlias && rawAlias.toLowerCase() !== 'nan') {
+          aliasVal = rawAlias;
+        }
+      }
+
+      // [핵심] NO.가 있으면 NO를 최우선 고유 키로 비교하여 동일 화원사로 매칭!
+      // NO.가 없으면 화원사명을 키로 사용
+      const idKey = noVal ? `NO:${noVal}` : (nameVal ? `NAME:${nameVal}` : `ROW:${idx}`);
+
+      // 제외 조건: 화원사명 또는 화원별칭에 보류, 정지, 해지, TO없음, to없음, 탈퇴, 폐업, 폐업해지 포함 여부 전수 검사
+      const excluded = !nameVal || this.isExcluded(nameVal, aliasVal);
+      const qty = this.parseOrderQty(r, qtyKey);
+
+      return {
+        idKey,
+        no: noVal,
+        name: nameVal,
+        alias: aliasVal,
+        excluded,
+        qty
+      };
+    }).filter(e => e.idKey);
   },
 
   execute(prevRows, currRows, topN = 10) {
@@ -171,76 +236,66 @@ const FloristRankingModule = {
 
     const normPrev = this.normalizeRows(prevRows);
     const normCurr = this.normalizeRows(currRows);
-    const numToNameMap = this.buildNumberToNameMap([normPrev, normCurr]);
 
-    const extractEntries = (rows) => {
-      if (!rows || rows.length === 0) return [];
-      const keys = Object.keys(rows[0]);
-      const codeKey = this.findNameColumn(rows, keys);
-      const qtyKey = this.findQtyColumn(keys);
+    const prevEntries = this.extractFloristEntries(normPrev);
+    const currEntries = this.extractFloristEntries(normCurr);
 
-      return rows.map(r => {
-        let rawName = String(r[codeKey] ?? '').trim();
-
-        if (!rawName || this.isPureNumber(rawName)) {
-          if (rawName && numToNameMap[rawName]) {
-            rawName = numToNameMap[rawName];
-          } else {
-            return null;
-          }
-        }
-
-        // 원본자료의 화원사명(또는 농장) 이름을 그대로 사용하되, ~호 뒤에 붙은 기호는 무시
-        const displayName = this.normalizeFloristName(rawName);
-        const excluded = !displayName || this.isExcluded(rawName) || this.isExcluded(displayName);
-        const qty = this.parseOrderQty(r, qtyKey);
-
-        return { displayName, excluded, qty };
-      }).filter(Boolean);
-    };
-
-    const prevEntries = extractEntries(normPrev);
-    const currEntries = extractEntries(normCurr);
-
-    const excludedNames = new Set();
+    // [핵심] 이전 또는 당월 데이터 중 어느 한 쪽이라도 (해지), (보류) 등이 있으면 해당 NO는 전수 제외!
+    const excludedKeys = new Set();
     prevEntries.forEach(e => {
-      if (e.excluded) excludedNames.add(e.displayName);
+      if (e.excluded) excludedKeys.add(e.idKey);
     });
     currEntries.forEach(e => {
-      if (e.excluded) excludedNames.add(e.displayName);
+      if (e.excluded) excludedKeys.add(e.idKey);
     });
 
+    // 대표 화원사명 및 No. 맵 구성 (당월 최신 명칭 우선)
+    const nameMap = {};
+    const noMap = {};
+    prevEntries.forEach(e => {
+      if (e.name) nameMap[e.idKey] = e.name;
+      if (e.no) noMap[e.idKey] = e.no;
+    });
+    currEntries.forEach(e => {
+      if (e.name) nameMap[e.idKey] = e.name;
+      if (e.no) noMap[e.idKey] = e.no;
+    });
+
+    // [핵심] 동일 NO. 기준 발주수량 합산
     const prevCounts = {};
     prevEntries.forEach(e => {
-      if (e.excluded || excludedNames.has(e.displayName)) return;
+      if (excludedKeys.has(e.idKey)) return;
       if (e.qty > 0) {
-        prevCounts[e.displayName] = (prevCounts[e.displayName] || 0) + e.qty;
+        prevCounts[e.idKey] = (prevCounts[e.idKey] || 0) + e.qty;
       }
     });
 
     const currCounts = {};
     currEntries.forEach(e => {
-      if (e.excluded || excludedNames.has(e.displayName)) return;
+      if (excludedKeys.has(e.idKey)) return;
       if (e.qty > 0) {
-        currCounts[e.displayName] = (currCounts[e.displayName] || 0) + e.qty;
+        currCounts[e.idKey] = (currCounts[e.idKey] || 0) + e.qty;
       }
     });
 
-    const allFlorists = Array.from(new Set([...Object.keys(prevCounts), ...Object.keys(currCounts)]))
-      .filter(fl => (prevCounts[fl] || 0) > 0 || (currCounts[fl] || 0) > 0);
+    // 유효 활동 화원사 목록 추출
+    const allFloristKeys = Array.from(new Set([...Object.keys(prevCounts), ...Object.keys(currCounts)]))
+      .filter(k => (prevCounts[k] || 0) > 0 || (currCounts[k] || 0) > 0);
 
     const rankingList = [];
 
-    allFlorists.forEach(fl => {
-      const p = prevCounts[fl] || 0;
-      const c = currCounts[fl] || 0;
+    allFloristKeys.forEach(k => {
+      const p = prevCounts[k] || 0;
+      const c = currCounts[k] || 0;
       const inc = c - p;
-      if (inc <= 0) return;
+      if (inc <= 0) return; // 증가한 화원사만 추출!
 
       const rate = p > 0 ? Number(((inc / p) * 100).toFixed(1)) : 100.0;
 
       rankingList.push({
-        floristName: fl,
+        idKey: k,
+        no: noMap[k] || '-',
+        floristName: nameMap[k] || `화원사 (${k})`,
         prevOrders: p,
         currOrders: c,
         increaseOrders: inc,
@@ -248,6 +303,7 @@ const FloristRankingModule = {
       });
     });
 
+    // 발주 증가량 내림차순 정렬 -> 당월수량 내림차순 -> 화원사명 오름차순
     rankingList.sort((a, b) =>
       (b.increaseOrders - a.increaseOrders) ||
       (b.currOrders - a.currOrders) ||
@@ -266,24 +322,25 @@ const FloristRankingModule = {
       type: 'table_and_chart', // 표와 그래프 둘 다 표시
       title: '1-2. 발주증가 화원사 1위~10위 추출 (화원사의 체인발주 수량)',
       kpis: [
-        { label: '발주증가 1위 화원사', value: topData[0]?.floristName || '-', sub: `전월 ${topData[0]?.prevOrders || 0}건 → 당월 ${topData[0]?.currOrders || 0}건 (+${topData[0]?.increaseOrders || 0}건)` },
+        { label: '발주증가 1위 화원사', value: topData[0]?.floristName || '-', sub: `이전 ${topData[0]?.prevOrders || 0}건 → 현재 ${topData[0]?.currOrders || 0}건 (+${topData[0]?.increaseOrders || 0}건)` },
         { label: 'TOP 10 총 발주증가량', value: `+${totalIncreaseInTop10.toLocaleString()}건`, isPositive: true, sub: '체인발주 순증가 1~10위 합산' },
-        { label: '발주증가 / 활동 화원사', value: `${rankingList.length}개사 / ${allFlorists.length}개사`, sub: '체인발주 증가 화원사 비중' }
+        { label: '발주증가 / 활동 화원사', value: `${rankingList.length}개사 / ${allFloristKeys.length}개사`, sub: '체인발주 증가 화원사 비중' }
       ],
       columns: [
         { key: 'rank', label: '순위' },
+        { key: 'no', label: 'NO.' },
         { key: 'floristName', label: '농장(화원사명)' },
-        { key: 'prevOrders', label: '이전달 체인발주 수량' },
-        { key: 'currOrders', label: '현재달 체인발주 수량' },
-        { key: 'increaseOrders', label: '발주증가 수량 (건)' },
-        { key: 'growthRate', label: '증가율 (%)' }
+        { key: 'prevOrders', label: '이전 체인발주 수량' },
+        { key: 'currOrders', label: '현재 체인발주 수량' },
+        { key: 'increaseOrders', label: '체인발주 순증가량 (건)' },
+        { key: 'growthRate', label: '이전 대비 증가율 (%)' }
       ],
       tableData: topData,
       chartData: {
         labels: topData.map(d => d.floristName),
         datasets: [
           {
-            label: '발주증가 수량 (당월-전월)',
+            label: '발주증가 수량 (현재-이전)',
             data: topData.map(d => d.increaseOrders),
             backgroundColor: 'rgba(16, 185, 129, 0.88)',
             borderColor: 'rgba(5, 150, 105, 1.0)',

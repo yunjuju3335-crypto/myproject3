@@ -486,20 +486,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const orderTrendMod = registry.get('orderTrend');
     const floristRankMod = registry.get('topFlorists');
     const productProgMod = registry.get('productProgress');
+    const hgsTrendMod = registry.get('hgsTrend') || window.HgsTrendModule;
 
     let trendOutput = null;
     let floristOutput = null;
     let prodOutput = null;
+    let hgsOutput = null;
 
     if (prev && curr && prev.rows && curr.rows && orderTrendMod && floristRankMod) {
       trendOutput = orderTrendMod.execute(prev.rows, curr.rows);
       floristOutput = floristRankMod.execute(prev.rows, curr.rows, 10);
+      if (hgsTrendMod) {
+        try {
+          hgsOutput = hgsTrendMod.execute(prev.rows, curr.rows, prod?.rows);
+        } catch (e) {
+          console.warn('HGS 추이 분석 실패:', e);
+        }
+      }
     } else if (store.state.analysisResults) {
       if (store.state.analysisResults.orderTrend) {
         trendOutput = store.state.analysisResults.orderTrend;
       }
       if (store.state.analysisResults.topFlorists) {
         floristOutput = store.state.analysisResults.topFlorists;
+      }
+      if (store.state.analysisResults.hgsTrend) {
+        hgsOutput = store.state.analysisResults.hgsTrend;
       }
     }
 
@@ -511,13 +523,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     store.state.currentAnalysis = 'all';
     try { localStorage.setItem('cmwork_last_analysis_mode', 'all'); } catch (e) {}
-    renderAllInOneDashboard(trendOutput, floristOutput, prodOutput, animate);
+    renderAllInOneDashboard(trendOutput, floristOutput, prodOutput, hgsOutput, animate);
   };
 
   /**
    * 한 화면에 1번~5번 전체 분석 결과를 펼쳐서 렌더링
    */
-  const renderAllInOneDashboard = (trendOutput, floristOutput, prodOutput, animate = true) => {
+  const renderAllInOneDashboard = (trendOutput, floristOutput, prodOutput, hgsOutput = null, animate = true) => {
     resultContainer.innerHTML = '';
 
     const container = document.createElement('div');
@@ -578,14 +590,30 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.appendChild(section2);
     }
 
-    // 1-3. 화원사 상품진행 분석 표
+    // 1-3. H·G·S 등급 화원사 발주 추이 분리 분석 표
+    if (hgsOutput) {
+      const sectionHgs = document.createElement('div');
+      sectionHgs.style.marginTop = '28px';
+      sectionHgs.innerHTML = `
+        <div style="font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+          <span style="color: #6366f1;">🏷️ [결과 1-3]</span>
+          <span>1-3. H·G·S 등급 화원사 발주 추이 분리 분석표 (전월 vs 당월 비교)</span>
+        </div>
+      `;
+      const hgsBox = document.createElement('div');
+      window.TableRenderer.renderHgsAnalysis(hgsBox, hgsOutput, '1-3. H·G·S 등급 화원사 발주 추이 비교 분석');
+      sectionHgs.appendChild(hgsBox);
+      container.appendChild(sectionHgs);
+    }
+
+    // 1-4. 화원사 상품진행 분석 표
     if (prodOutput) {
       const section3 = document.createElement('div');
       section3.style.marginTop = '28px';
       section3.innerHTML = `
         <div style="font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-          <span style="color: var(--accent-emerald);">🚚 [결과 1-3]</span>
-          <span>1-3. 화원사 상품진행 - 농장별 특정 상품 완료 건수 집계표 (특·특대·4단·5단·짱구 완료건)</span>
+          <span style="color: var(--accent-emerald);">🚚 [결과 1-4]</span>
+          <span>1-4. 화원사 상품진행 - 농장별 특정 상품 완료 건수 집계표 (특·특대·4단·5단·짱구 완료건)</span>
         </div>
       `;
       const tableBox3 = document.createElement('div');
@@ -702,6 +730,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
       }
       output = module.execute(rec ? rec.rows : null, errData ? errData.rows : null);
+    } else if (moduleId === 'hgsTrend') {
+      const prev = store.getVaultData('prevOrders');
+      const curr = store.getVaultData('currOrders');
+      const prod = store.getVaultData('products');
+      if (!prev || !curr) {
+        if (!prev) prevFileInput.click();
+        else currFileInput.click();
+        showToast('H·G·S 추이 분석을 위해 먼저 [1-1. 전월 발주]와 [1-2. 당월 발주] 파일을 불러와주세요.', 'info');
+        return;
+      }
+      output = module.execute(prev.rows, curr.rows, prod ? prod.rows : null);
     } else {
       const prev = store.getVaultData('prevOrders');
       const curr = store.getVaultData('currOrders');
@@ -824,6 +863,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         tableBox.appendChild(step4);
       }
 
+    } else if (output.type === 'hgs_trend') {
+      window.TableRenderer.renderHgsAnalysis(tableBox, output, output.title);
     } else if (output.type === 'multi_tables') {
       window.TableRenderer.renderMultiTables(tableBox, output.tables, output.title);
     } else if (output.type === 'table_only') {

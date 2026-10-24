@@ -28,19 +28,33 @@ const ProductProgressModule = {
     return false;
   },
 
-  isExcluded(name) {
-    if (!name) return true;
-    const str = String(name).trim();
-    const regex = /[\(\[\<]\s*(to\s*없음|보류중|보류|연락두절|정지\.발주사|정지중|정지전불|정지|탈퇴폐업|탈퇴|폐업|테스트|해지)/i;
-    if (regex.test(str)) return true;
-    const explicit = [
-      "(to없음)", "(to 없음)", "(보류중)", "(보류)",
-      "(연락두절)", "(정지)", "(정지.발주사)", "(정지중)",
-      "(정지전불", "(정지전불)", "(탈퇴)", "(폐업)",
-      "(탈퇴폐업)", "(테스트)", "(해지", "(해지)"
+  isExcluded(name, alias = '') {
+    const combined = (String(name || '') + ' ' + String(alias || '')).trim();
+    if (!combined || combined.toLowerCase() === 'nan') return true;
+
+    // 공백 제거 및 소문자 정규화
+    const cleanNoSpace = combined.replace(/\s+/g, '').toLowerCase();
+
+    // 1. 합계, 총계 등 요약행 필터링
+    if (['합계', '총계', '소계', '평균', 'total', 'subtotal'].some(t => cleanNoSpace.includes(t))) {
+      return true;
+    }
+
+    // 2. 사용자가 지정한 제외 키워드: 보류, 정지, 해지, TO없음, to없음, 탈퇴, 폐업, 폐업해지 등
+    // 괄호 유무, 위치, 대소문자 무관하게 화원사명 또는 화원별칭에 단어가 들어있으면 전수 제외!
+    const excludeKeywords = [
+      '보류',
+      '정지',
+      '해지',
+      'to없음',
+      '탈퇴',
+      '폐업',
+      '폐업해지',
+      '연락두절',
+      '테스트'
     ];
-    const lower = str.toLowerCase();
-    return explicit.some(t => lower.includes(t.toLowerCase()));
+
+    return excludeKeywords.some(kw => cleanNoSpace.includes(kw));
   },
 
   isPureNumber(val) {
@@ -118,6 +132,7 @@ const ProductProgressModule = {
     const normRows = this.normalizeRows(prodRows);
     const keys = Object.keys(normRows[0]);
     const farmKey = this.findFarmNameColumn(normRows, keys);
+    const aliasKey = keys.find(k => ['화원별칭', '별칭', '상호명', '상호', '비고'].some(t => k.replace(/\s+/g, '').toLowerCase().includes(t)));
     const itemKey = keys.find(k => k.includes('상품') || k.includes('품목')) || keys[0];
     const stepKey = keys.find(k => ['공정', '상태', '배송'].some(c => k.includes(c)) && !['배송비', '배송지', '배송일'].some(ex => k.includes(ex)));
     const rateKey = keys.find(k => k.includes('진행률') || k.toLowerCase().includes('rate'));
@@ -160,6 +175,7 @@ const ProductProgressModule = {
 
     normRows.forEach(r => {
       let rawFarm = String(r[farmKey] || '').trim();
+      const rawAlias = aliasKey ? String(r[aliasKey] || '').trim() : '';
 
       if (!rawFarm || this.isPureNumber(rawFarm)) {
         if (rawFarm && numToNameMap[rawFarm]) {
@@ -169,8 +185,9 @@ const ProductProgressModule = {
         }
       }
 
-      if (this.isExcluded(rawFarm)) {
-        return; // (보류), (정지), (해지) 화원사 제외
+      // 보류, 정지, 해지, TO없음, to없음, 탈퇴, 폐업, 폐업해지 등 전수 제외
+      if (this.isExcluded(rawFarm, rawAlias)) {
+        return;
       }
 
       const item = String(r[itemKey] || '기타').trim();
@@ -179,7 +196,7 @@ const ProductProgressModule = {
 
       // 원본 데이터의 화원사명/농장 이름과 100% 동일하게 유지 (기호 임의 제거 안 함)
       const exactName = String(rawFarm).trim();
-      if (!exactName || this.isExcluded(exactName)) {
+      if (!exactName || this.isExcluded(exactName, rawAlias)) {
         return;
       }
 

@@ -46,4 +46,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (window.StaffSummaryModule) {
     window.moduleRegistry.register(window.StaffSummaryModule);
   }
+  if (window.HgsTrendModule) {
+    window.moduleRegistry.register(window.HgsTrendModule);
+  }
 });

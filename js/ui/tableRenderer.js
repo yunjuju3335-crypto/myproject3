@@ -248,6 +248,137 @@ class TableRenderer {
 
     container.appendChild(wrapper);
   }
+
+  /**
+   * H·G·S 등급 화원사 발주 추이 분리 분석 전용 렌더러
+   * @param {HTMLElement} container 
+   * @param {Object} hgsOutput HgsTrendModule 실행 결과
+   * @param {string} title 섹션 타이틀
+   */
+  static renderHgsAnalysis(container, hgsOutput, title = '1-3. H·G·S 등급 화원사 발주 추이 비교 분석') {
+    if (!hgsOutput) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'hgs-analysis-view';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.gap = '14px';
+
+    // 1. 상단 안내 및 종합 KPI 카드 행
+    const kpiRow = document.createElement('div');
+    kpiRow.className = 'kpi-row';
+    kpiRow.style.display = 'grid';
+    kpiRow.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+    kpiRow.style.gap = '12px';
+
+    const h = hgsOutput.hAnalysis || {};
+    const g = hgsOutput.gAnalysis || {};
+    const s = hgsOutput.sAnalysis || {};
+
+    const createGroupKpi = (label, tag, count, prev, curr, diff, rate, color) => {
+      const isPos = diff >= 0;
+      return `
+        <div class="kpi-card" style="border-top: 3px solid ${color}; padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 13px; font-weight: 700; color: ${color};">${label}</span>
+            <span style="font-size: 11px; background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px;">${count}개사</span>
+          </div>
+          <div style="font-size: 20px; font-weight: 800; color: ${isPos ? '#10b981' : '#ef4444'};">
+            ${isPos ? '+' : ''}${diff.toLocaleString()}건
+            <span style="font-size: 13px; font-weight: 600; margin-left: 4px;">(${rate >= 0 ? '+' : ''}${rate}%)</span>
+          </div>
+          <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 6px;">
+            이전 <strong>${prev.toLocaleString()}건</strong> ➔ 현재 <strong>${curr.toLocaleString()}건</strong>
+          </div>
+        </div>
+      `;
+    };
+
+    kpiRow.innerHTML = `
+      ${createGroupKpi('🏷️ H 그룹 발주 추이', 'H', h.count || 0, h.totalPrev || 0, h.totalCurr || 0, h.totalDiff || 0, h.totalRate || 0, '#6366f1')}
+      ${createGroupKpi('🏷️ G 그룹 발주 추이', 'G', g.count || 0, g.totalPrev || 0, g.totalCurr || 0, g.totalDiff || 0, g.totalRate || 0, '#10b981')}
+      ${createGroupKpi('🏷️ S 그룹 발주 추이', 'S', s.count || 0, s.totalPrev || 0, s.totalCurr || 0, s.totalDiff || 0, s.totalRate || 0, '#f59e0b')}
+    `;
+    wrapper.appendChild(kpiRow);
+
+    // 2. 탭 전환 버튼 바
+    const tabBar = document.createElement('div');
+    tabBar.style.display = 'flex';
+    tabBar.style.gap = '8px';
+    tabBar.style.flexWrap = 'wrap';
+    tabBar.style.margin = '4px 0 10px 0';
+    tabBar.innerHTML = `
+      <button class="btn btn-secondary hgs-tab-btn active" data-hgs="summary" style="font-size: 12px; padding: 6px 14px; width: auto; font-weight: 700;">
+        📊 H·G·S 종합 비교 요약
+      </button>
+      <button class="btn btn-secondary hgs-tab-btn" data-hgs="H" style="font-size: 12px; padding: 6px 14px; width: auto; font-weight: 600;">
+        🏷️ H 그룹 개별 추이 (${h.count || 0}개사)
+      </button>
+      <button class="btn btn-secondary hgs-tab-btn" data-hgs="G" style="font-size: 12px; padding: 6px 14px; width: auto; font-weight: 600;">
+        🏷️ G 그룹 개별 추이 (${g.count || 0}개사)
+      </button>
+      <button class="btn btn-secondary hgs-tab-btn" data-hgs="S" style="font-size: 12px; padding: 6px 14px; width: auto; font-weight: 600;">
+        🏷️ S 그룹 개별 추이 (${s.count || 0}개사)
+      </button>
+    `;
+    wrapper.appendChild(tabBar);
+
+    // 3. 테이블 컨테이너 영역
+    const contentBox = document.createElement('div');
+    contentBox.className = 'hgs-content-box';
+    wrapper.appendChild(contentBox);
+
+    // 요약 테이블 컬럼
+    const summaryColumns = [
+      { key: 'rank', label: '순위' },
+      { key: 'group', label: '구분 그룹' },
+      { key: 'count', label: '화원사 수' },
+      { key: 'prevOrders', label: '이전 총 체인발주' },
+      { key: 'currOrders', label: '현 총 체인발주' },
+      { key: 'diff', label: '순증감 (건)' },
+      { key: 'growthRate', label: '증감율 (%)' },
+      { key: 'prodCompleted', label: '1-3 상품완료건' }
+    ];
+
+    // 개별 그룹 테이블 렌더링 헬퍼
+    const renderActiveTab = (tabKey) => {
+      contentBox.innerHTML = '';
+      tabBar.querySelectorAll('.hgs-tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-hgs') === tabKey);
+      });
+
+      if (tabKey === 'summary') {
+        const tableBox = document.createElement('div');
+        this.render(tableBox, summaryColumns, hgsOutput.summaryComparison || [], 'H·G·S 등급별 발주 추이 종합 비교 요약표');
+        contentBox.appendChild(tableBox);
+      } else if (tabKey === 'H') {
+        const tableBox = document.createElement('div');
+        this.render(tableBox, hgsOutput.columns, h.list || [], `H 그룹 소속 화원사 발주 추이 비교 목록 (총 ${h.count || 0}개사)`);
+        contentBox.appendChild(tableBox);
+      } else if (tabKey === 'G') {
+        const tableBox = document.createElement('div');
+        this.render(tableBox, hgsOutput.columns, g.list || [], `G 그룹 소속 화원사 발주 추이 비교 목록 (총 ${g.count || 0}개사)`);
+        contentBox.appendChild(tableBox);
+      } else if (tabKey === 'S') {
+        const tableBox = document.createElement('div');
+        this.render(tableBox, hgsOutput.columns, s.list || [], `S 그룹 소속 화원사 발주 추이 비교 목록 (총 ${s.count || 0}개사)`);
+        contentBox.appendChild(tableBox);
+      }
+    };
+
+    // 탭 클릭 이벤트
+    tabBar.addEventListener('click', (e) => {
+      const btn = e.target.closest('.hgs-tab-btn');
+      if (!btn) return;
+      const tabKey = btn.getAttribute('data-hgs');
+      renderActiveTab(tabKey);
+    });
+
+    // 초기 렌더링 (종합 요약)
+    renderActiveTab('summary');
+
+    container.appendChild(wrapper);
+  }
 }
 
 window.TableRenderer = TableRenderer;

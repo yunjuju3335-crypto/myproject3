@@ -370,6 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       let trendOutput = null;
       let floristOutput = null;
       let prodOutput = null;
+      let hgsOutput = null;
       let recOutput = null;
       let errOutput = null;
       let staffOutput = null;
@@ -395,6 +396,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           prodOutput = window.ProductProgressModule.execute(prodRows);
         } catch (e) {
           console.warn('ProductProgressModule 실행 오류:', e);
+        }
+      }
+
+      if (window.HgsTrendModule && prevRows && currRows && prevRows.length > 0 && currRows.length > 0) {
+        try {
+          hgsOutput = window.HgsTrendModule.execute(prevRows, currRows, prodRows);
+        } catch (e) {
+          console.warn('HgsTrendModule 실행 오류:', e);
         }
       }
 
@@ -500,6 +509,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         trendOutput,
         floristOutput,
         prodOutput,
+        hgsOutput,
         recOutput,
         errOutput,
         staffOutput,
@@ -545,6 +555,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (currentTeam === 'all') {
       renderAllView(dataBundle);
+    } else if (currentTeam === 'florists') {
+      renderFloristsView(dataBundle);
     } else {
       const team = TEAM_CONFIG.find(t => t.teamId === currentTeam);
       if (team) {
@@ -1133,10 +1145,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     teamViewContainer.innerHTML = `
       <!-- 전사 4대 KPI 요약 -->
       <section class="kpi-row" style="margin-bottom: 28px;">
-        <div class="kpi-card">
-          <div class="kpi-label">화원사 발주 순증가</div>
-          <div class="kpi-value text-positive">+525건</div>
-          <div class="kpi-sub">+72.21% 순증가 (727건 ➔ 1,252건)</div>
+        <div class="kpi-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div class="kpi-label">화원사 발주 순증가</div>
+            <div class="kpi-value text-positive">+525건</div>
+            <div class="kpi-sub">+72.21% 순증가 (727건 ➔ 1,252건)</div>
+          </div>
+          <button class="btn btn-secondary btn-jump-team" data-team="florists" style="margin-top: 10px; font-size: 11px; padding: 4px 10px; width: 100%; color: #c4b5fd; border-color: rgba(99, 102, 241, 0.4); background: rgba(99, 102, 241, 0.1);">
+            🌸 화원사 결과(1-1 ~ 1-4) 보기 ➔
+          </button>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">당월 접수 완료수량</div>
@@ -1313,9 +1330,161 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   /**
+   * 화원사 전용 결과 뷰 렌더링 (결과 1-1, 1-2, 1-3 및 1-3 HGS)
+   */
+  const renderFloristsView = (bundle) => {
+    const { trendOutput, floristOutput, prodOutput, hgsOutput } = bundle;
+
+    teamViewContainer.innerHTML = `
+      <!-- 화원사 뷰 전용 헤더 배너 -->
+      <section class="feedback-banner" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(16, 185, 129, 0.15)); border: 1px solid rgba(99, 102, 241, 0.3); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <div class="feedback-banner-title">
+              <span>🌸</span>
+              <span>화원사 발주 및 상품진행 종합 분석 리포트 (결과 1-1 ~ 1-4)</span>
+            </div>
+            <div class="feedback-banner-desc">
+              <strong>결과 1-1</strong>(화원사 이전 대비 현재 발주 추이 비교), <strong>결과 1-2</strong>(발주증가 TOP 10 및 순증가 차트), <strong>결과 1-3</strong>(H·G·S 등급별 발주 추이 분리 분석), <strong>결과 1-4</strong>(화원사 상품진행 완료 건수 집계)를 한곳에서 편리하게 확인합니다.
+            </div>
+          </div>
+          <span class="slot-badge badge-ready" style="font-size: 12px; padding: 6px 12px;">
+            화원사 전문 분석 뷰
+          </span>
+        </div>
+      </section>
+
+      <!-- 화원사 퀵 필터 서브 탭 -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px;" id="florist-section-filter">
+        <button class="btn btn-secondary florist-filter-btn active" data-target="all" style="font-size: 12px; padding: 7px 16px; width: auto; font-weight: 700;">
+          ✨ 전체 한번에 펼쳐보기 (1-1 ~ 1-4)
+        </button>
+        <button class="btn btn-secondary florist-filter-btn" data-target="sec-1-1" style="font-size: 12px; padding: 7px 16px; width: auto;">
+          📦 [결과 1-1] 이전 대비 현재 발주 추이 표
+        </button>
+        <button class="btn btn-secondary florist-filter-btn" data-target="sec-1-2" style="font-size: 12px; padding: 7px 16px; width: auto;">
+          🏆 [결과 1-2] 발주증가 TOP 10 표 + 차트
+        </button>
+        <button class="btn btn-secondary florist-filter-btn" data-target="sec-1-3" style="font-size: 12px; padding: 7px 16px; width: auto;">
+          🏷️ [결과 1-3] H·G·S 등급별 추이 분리 분석
+        </button>
+        <button class="btn btn-secondary florist-filter-btn" data-target="sec-1-4" style="font-size: 12px; padding: 7px 16px; width: auto;">
+          🚚 [결과 1-4] 화원사 상품진행 완료건
+        </button>
+      </div>
+
+      <!-- 화원사 결과 컨테이너 영역 -->
+      <div id="florist-results-content">
+        <!-- 1-1. 발주 추이 섹션 -->
+        <div class="florist-section-block" id="block-sec-1-1" style="margin-bottom: 36px;">
+          <div class="feedback-section-title">
+            <span style="color: var(--accent-indigo);">📦 [결과 1-1]</span>
+            <span>1-1. 화원사 발주(이전) 대비 1-2. 화원사 발주(현재) 추이 변화표</span>
+          </div>
+          <div id="florist-box-1-1"></div>
+        </div>
+
+        <!-- 1-2. 발주증가 TOP 10 섹션 -->
+        <div class="florist-section-block" id="block-sec-1-2" style="margin-bottom: 36px;">
+          <div class="feedback-section-title">
+            <span style="color: var(--accent-indigo);">🏆 [결과 1-2]</span>
+            <span>1-2. 화원사 발주증가 1위~10위 비교 시각화 (순위표 + 순증가 비교 차트)</span>
+          </div>
+          <div id="florist-box-1-2-table"></div>
+          <div id="florist-box-1-2-chart" style="margin-top: 16px;"></div>
+        </div>
+
+        <!-- 1-3 HGS. H·G·S 등급별 추이 섹션 -->
+        <div class="florist-section-block" id="block-sec-1-3" style="margin-bottom: 36px;">
+          <div class="feedback-section-title">
+            <span style="color: #6366f1;">🏷️ [결과 1-3]</span>
+            <span>1-3. H·G·S 등급 화원사 발주 추이 분리 분석표 (전월 vs 당월 비교)</span>
+          </div>
+          <div id="florist-box-1-3-hgs"></div>
+        </div>
+
+        <!-- 1-4. 상품진행 완료건 섹션 -->
+        <div class="florist-section-block" id="block-sec-1-4" style="margin-bottom: 36px;">
+          <div class="feedback-section-title">
+            <span style="color: var(--accent-emerald);">🚚 [결과 1-4]</span>
+            <span>1-4. 화원사 상품진행 완료 건수 집계표 (특·특대·4단·5단·짱구 완료건)</span>
+          </div>
+          <div id="florist-box-1-4"></div>
+        </div>
+      </div>
+    `;
+
+    // 1-1 렌더링
+    const box1 = document.getElementById('florist-box-1-1');
+    if (box1) {
+      if (trendOutput && trendOutput.columns && trendOutput.data) {
+        window.TableRenderer.render(box1, trendOutput.columns, trendOutput.data, '1-1. 이전 대비 현재 발주 추이 비교표');
+      } else {
+        box1.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); background: var(--bg-card); border-radius: 8px;">1-1(전월 발주) 및 1-2(현재 발주) 엑셀 파일을 업로드하시면 발주 추이 비교표가 표시됩니다.</div>`;
+      }
+    }
+
+    // 1-2 렌더링
+    const box2Table = document.getElementById('florist-box-1-2-table');
+    const box2Chart = document.getElementById('florist-box-1-2-chart');
+    if (box2Table) {
+      if (floristOutput && floristOutput.columns && floristOutput.tableData) {
+        window.TableRenderer.render(box2Table, floristOutput.columns, floristOutput.tableData, '상위 1~10위 화원사 순위표');
+        if (box2Chart && floristOutput.chartData) {
+          window.ChartRenderer.render(box2Chart, floristOutput.chartData, 'TOP 10 화원사 순증가 비교 차트');
+        }
+      } else {
+        box2Table.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); background: var(--bg-card); border-radius: 8px;">1-1 및 1-2 발주 데이터를 업로드하시면 발주증가 TOP 10 순위표 및 차트가 표시됩니다.</div>`;
+      }
+    }
+
+    // 1-3 HGS 렌더링
+    const boxHgs = document.getElementById('florist-box-1-3-hgs');
+    if (boxHgs) {
+      if (hgsOutput) {
+        window.TableRenderer.renderHgsAnalysis(boxHgs, hgsOutput, '1-3. H·G·S 등급 화원사 발주 추이 비교 분석');
+      } else {
+        boxHgs.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); background: var(--bg-card); border-radius: 8px;">1-1 및 1-2 발주 데이터를 업로드하시면 H·G·S 등급별 추이 분석이 표시됩니다.</div>`;
+      }
+    }
+
+    // 1-4 렌더링
+    const box4 = document.getElementById('florist-box-1-4');
+    if (box4) {
+      if (prodOutput && prodOutput.columns && prodOutput.data) {
+        window.TableRenderer.render(box4, prodOutput.columns, prodOutput.data, prodOutput.title || '1-4. 화원사 상품진행 완료 건수 집계표');
+      } else {
+        box4.innerHTML = `<div style="padding: 24px; text-align: center; color: var(--text-muted); background: var(--bg-card); border-radius: 8px;">1-4. 화원사 상품진행 엑셀 파일을 업로드하시면 완료 건수 집계표가 표시됩니다.</div>`;
+      }
+    }
+
+    // 필터 버튼 이벤트 바인딩
+    const filterContainer = document.getElementById('florist-section-filter');
+    if (filterContainer) {
+      filterContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.florist-filter-btn');
+        if (!btn) return;
+        const target = btn.getAttribute('data-target');
+
+        filterContainer.querySelectorAll('.florist-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        const allBlocks = teamViewContainer.querySelectorAll('.florist-section-block');
+        if (target === 'all') {
+          allBlocks.forEach(b => b.style.display = 'block');
+        } else {
+          allBlocks.forEach(b => {
+            b.style.display = b.id === `block-${target}` ? 'block' : 'none';
+          });
+        }
+      });
+    }
+  };
+
+  /**
    * 모든 분석 결과 표 렌더링
    */
-  const renderAllAnalysisTables = ({ trendOutput, floristOutput, prodOutput, recOutput, errOutput, staffOutput }) => {
+  const renderAllAnalysisTables = ({ trendOutput, floristOutput, prodOutput, hgsOutput, recOutput, errOutput, staffOutput }) => {
     const container = document.getElementById('analysis-tables-content');
     if (!container) return;
     container.innerHTML = '';
@@ -1348,11 +1517,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       container.appendChild(sec2);
     }
 
-    // 1-3. 상품진행
+    // 1-3. H·G·S 등급 화원사 발주 추이 분리 분석표
+    if (hgsOutput) {
+      const secHgs = document.createElement('div');
+      secHgs.style.marginBottom = '32px';
+      secHgs.innerHTML = `<div class="feedback-section-title"><span style="color: #6366f1;">🏷️ [결과 1-3]</span><span>1-3. H·G·S 등급 화원사 발주 추이 분리 분석표 (전월 vs 당월 비교)</span></div>`;
+      const bHgs = document.createElement('div');
+      window.TableRenderer.renderHgsAnalysis(bHgs, hgsOutput, '1-3. H·G·S 등급 화원사 발주 추이 비교 분석');
+      secHgs.appendChild(bHgs);
+      container.appendChild(secHgs);
+    }
+
+    // 1-4. 상품진행
     if (prodOutput) {
       const sec3 = document.createElement('div');
       sec3.style.marginBottom = '32px';
-      sec3.innerHTML = `<div class="feedback-section-title"><span style="color: var(--accent-emerald);">🚚 [결과 1-3]</span><span>1-3. 화원사 상품진행 완료 건수 집계표</span></div>`;
+      sec3.innerHTML = `<div class="feedback-section-title"><span style="color: var(--accent-emerald);">🚚 [결과 1-4]</span><span>1-4. 화원사 상품진행 완료 건수 집계표</span></div>`;
       const b3 = document.createElement('div');
       window.TableRenderer.render(b3, prodOutput.columns, prodOutput.data, prodOutput.title);
       sec3.appendChild(b3);
