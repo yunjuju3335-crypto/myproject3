@@ -557,6 +557,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderAllView(dataBundle);
     } else if (currentTeam === 'florists') {
       renderFloristsView(dataBundle);
+    } else if (currentTeam === 'teamReports') {
+      if (window.TeamReportsModule && window.TeamReportsModule.renderInline) {
+        window.TeamReportsModule.renderInline('team-view-container', window.TeamReportsModule.currentTeamId || 'teamChain');
+      }
     } else {
       const team = TEAM_CONFIG.find(t => t.teamId === currentTeam);
       if (team) {
