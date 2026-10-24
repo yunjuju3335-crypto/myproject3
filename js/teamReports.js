@@ -352,14 +352,20 @@
       const bundle = await this.resolveData();
       const staffMap = bundle.staffMap || {};
 
-      // 엑셀 다운로드 버튼 가시성 (체인팀일 때 강조)
+      // 엑셀 다운로드 버튼 (선택된 팀에 맞춰 동적 링크 제공)
       const downloadLink = document.getElementById('tr-btn-download-excel-link');
       if (downloadLink) {
-        if (team.id === 'teamChain') {
-          downloadLink.style.display = 'inline-flex';
-        } else {
-          downloadLink.style.display = 'none';
-        }
+        const fileMap = {
+          team1: '1팀_주간보고서_분석결과.xlsx',
+          team2: '2팀_주간보고서_분석결과.xlsx',
+          team3: '3팀_주간보고서_분석결과.xlsx',
+          teamChain: '체인팀_주간보고서_분석결과.xlsx'
+        };
+        const fname = fileMap[team.id] || '체인팀_주간보고서_분석결과.xlsx';
+        downloadLink.href = `./팀 보고서 양식/${fname}`;
+        downloadLink.download = fname;
+        downloadLink.innerHTML = `📥 ${team.name} 엑셀(.xlsx) 다운로드`;
+        downloadLink.style.display = 'inline-flex';
       }
 
       // 팀원별 실적 매핑
@@ -841,7 +847,18 @@
         });
 
         if (excelBtn) {
-          excelBtn.style.display = tId === 'teamChain' ? 'inline-flex' : 'none';
+          const fileMap = {
+            team1: '1팀_주간보고서_분석결과.xlsx',
+            team2: '2팀_주간보고서_분석결과.xlsx',
+            team3: '3팀_주간보고서_분석결과.xlsx',
+            teamChain: '체인팀_주간보고서_분석결과.xlsx'
+          };
+          const teamNameMap = { team1: '1팀', team2: '2팀', team3: '3팀', teamChain: '체인팀' };
+          const fname = fileMap[tId] || '체인팀_주간보고서_분석결과.xlsx';
+          excelBtn.href = `./팀 보고서 양식/${fname}`;
+          excelBtn.download = fname;
+          excelBtn.innerHTML = `📥 ${teamNameMap[tId] || ''} 엑셀(.xlsx) 다운로드`;
+          excelBtn.style.display = 'inline-flex';
         }
 
         const reportContainer = document.getElementById('team-report-sheet-inline');
